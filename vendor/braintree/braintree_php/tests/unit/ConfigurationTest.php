@@ -59,10 +59,14 @@ class ConfigurationTest extends Setup
             'merchantId' => 'sandbox_merchant_id',
             'publicKey' => 'sandbox_public_key',
             'privateKey' => 'sandbox_private_key',
+            'timeout' => 120,
+            'acceptGzipEncoding' => false,
         ]);
 
         $this->assertEquals('sandbox', $config->getEnvironment());
         $this->assertEquals('sandbox_merchant_id', $config->getMerchantId());
+        $this->assertEquals(120, $config->getTimeout());
+        $this->assertFalse($config->getAcceptGzipEncoding());
     }
 
     public function testSetValidEnvironment()
@@ -251,6 +255,30 @@ class ConfigurationTest extends Setup
     function testTimeoutDefaultsToSixty()
     {
         $this->assertEquals(60, $this->config->timeout());
+    }
+
+    function testSslVersion()
+    {
+        $this->config->sslVersion(6);
+
+        $this->assertEquals(6, $this->config->sslVersion());
+    }
+
+    function testSslVersionDefaultsToNull()
+    {
+        $this->assertEquals(null, $this->config->sslVersion());
+    }
+
+    public function testAcceptEncodingDefaultsTrue()
+    {
+        $this->assertTrue($this->config->acceptGzipEncoding());
+    }
+
+    public function testAcceptGzipEncoding()
+    {
+        $this->assertTrue($this->config->acceptGzipEncoding());
+        $this->config->acceptGzipEncoding(false);
+        $this->assertFalse($this->config->acceptGzipEncoding());
     }
 
      /**

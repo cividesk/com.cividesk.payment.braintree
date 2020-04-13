@@ -4,7 +4,7 @@ require_once 'vendor/braintree/braintree_php/lib/Braintree.php';
 class CRM_Core_Payment_Braintree extends CRM_Core_Payment {
   CONST CHARSET = 'iso-8859-1';
 
-  protected $_mode = NULL;
+  static protected $_mode = NULL;
   protected $_params = array();
 
   /**
@@ -27,12 +27,6 @@ class CRM_Core_Payment_Braintree extends CRM_Core_Payment {
     $this->_mode = $mode;
     $this->_paymentProcessor = $paymentProcessor;
     $this->_processorName = ts('Braintree');
-    $environment = ($mode == "test" ? 'sandbox' : 'production');
-
-    Braintree_Configuration::environment($environment);
-    Braintree_Configuration::merchantId($paymentProcessor["user_name"]);
-    Braintree_Configuration::publicKey($paymentProcessor["password"]);
-    Braintree_Configuration::privateKey($paymentProcessor["signature"]);   
   }
 
   /**
@@ -46,7 +40,6 @@ class CRM_Core_Payment_Braintree extends CRM_Core_Payment {
    */
   static function &singleton($mode, &$paymentProcessor, &$paymentForm = NULL, $force = FALSE) {
     $processorName = $paymentProcessor['name'];
-
     if (CRM_Utils_Array::value($processorName, self::$_singleton) === NULL) {
       self::$_singleton[$processorName] = new CRM_Core_Payment_Braintree($mode, $paymentProcessor);
     }
@@ -68,13 +61,29 @@ class CRM_Core_Payment_Braintree extends CRM_Core_Payment {
    * @public
    */
   function doDirectPayment(&$params) {
-
+    // Unsupported features
+    if (CRM_Utils_Array::value('is_recur', $params) == TRUE) {
+      CRM_Core_Error::fatal(ts('Braintree') . ': ' . ts('recurring payments not implemented'));
+    }
     // Let a $0 transaction pass
     if (empty($params['amount']) || $params['amount'] == 0) {
       return $params;
     }
 
-    // Get proper entry URL for returning on error.
+    // Initialize the payment processor paramaters
+    // CANNOT be done in the constructor since there might
+    // be multiple instances of the Braintree processor
+    // with different credentials, and we have a singleton
+    $environment = ($mode == "test" ? 'sandbox' : 'production');
+    $config = new Braintree_Configuration([
+      'environment' => ($mode == "test" ? 'sandbox' : 'production'),
+      'merchantId' => $this->_paymentProcessor['user_name'],
+      'publicKey' => $this->_paymentProcessor['password'],
+      'privateKey' => $this->_paymentProcessor['signature'],
+    ]);
+    $gateway = new Braintree\Gateway($config);
+
+    // Get proper entry URL for returning on error
     $qfKey = $params['qfKey'];
     $parsed_url = parse_url($params['entryURL']);
     $url_path = substr($parsed_url['path'], 1);
@@ -84,20 +93,26 @@ class CRM_Core_Payment_Braintree extends CRM_Core_Payment {
       FALSE, NULL, FALSE
     );
 
+    // Calculate Braintree transaction paramaters
     $requestArray = $this->formRequestArray($params);
 
+    // Allow further manipulation of the arguments via custom hooks ..
+    CRM_Utils_Hook::alterPaymentProcessorParams($this, $params, $requestArray);
+
     try {
-      $result = Braintree_Transaction::sale($requestArray);
+      $result = $gateway->transaction()->sale($requestArray);
     } catch (Exception $e) {
-      return self::error("Oops! Looks like there was problem. Payment Response: " . $e->getMessage());
+      return self::error(9000, $e->getMessage());
     }
 
     if ($result->success) {
-      $params['trxn_id'] = $result->transaction->id;
-      $params['gross_amount'] = $result->transaction->amount;
+      $transaction = $result->transaction;
+      $params['trxn_id'] = $transaction->id;
+      $params['gross_amount'] = $transaction->amount;
+      $params['trxn_result_code'] = $transaction->status;
     } 
     else if ($result->transaction) {
-      return self::error($result->transaction->processorResponseCode, $result->message);
+      return self::error($result->transaction->processorResponseCode, $result->transaction->processorResponseText);
     } 
     else {
       $error = "Validation errors:<br/>";
