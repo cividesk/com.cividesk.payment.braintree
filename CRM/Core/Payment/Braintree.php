@@ -43,7 +43,6 @@ class CRM_Core_Payment_Braintree extends CRM_Core_Payment {
     if (CRM_Utils_Array::value($processorName, self::$_singleton) === NULL) {
       self::$_singleton[$processorName] = new CRM_Core_Payment_Braintree($mode, $paymentProcessor);
     }
-
     return self::$_singleton[$processorName];
   }
 
@@ -76,7 +75,7 @@ class CRM_Core_Payment_Braintree extends CRM_Core_Payment {
     // with different credentials, and we have a singleton
     $environment = ($mode == "test" ? 'sandbox' : 'production');
     $config = new Braintree_Configuration([
-      'environment' => ($mode == "test" ? 'sandbox' : 'production'),
+      'environment' => ($this->_mode == "test" ? 'sandbox' : 'production'),
       'merchantId' => $this->_paymentProcessor['user_name'],
       'publicKey' => $this->_paymentProcessor['password'],
       'privateKey' => $this->_paymentProcessor['signature'],
